@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ski Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #003366;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      font-family: sans-serif;
+      color: white;
+    }
+    canvas {
+      background: #e0f7ff;
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+    #info {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.4);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    ← → move, ↑ speed up, ↓ slow down. Refresh to restart.
+  </div>
+  <canvas id="game" width="400" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const skier = {
+      x: canvas.width / 2,
+      y: canvas.height - 100,
+      width: 20,
+      height: 40,
+      speedX: 0,
+      baseSpeedY: 2,
+      speedY: 2,
+      maxSpeedX: 4,
+      maxSpeedY: 8
+    };
+
+    const keys = {
+      ArrowLeft: false,
+      ArrowRight: false,
+      ArrowUp: false,
+      ArrowDown: false
+    };
+
+    const trees = [];
+    let lastTreeTime = 0;
+    let score = 0;
+    let gameOver = false;
+
+    // Arrow-key handling [web:6][web:8][web:10]
+    window.addEventListener("keydown", (e) => {
+      if (e.key in keys) {
+        e.preventDefault();
+        keys[e.key] = true;
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.key in keys) {
+        e.preventDefault();
+        keys[e.key] = false;
+      }
+    });
+
+    function spawnTree() {
+      const size = 20 + Math.random() * 20;
+      const x = 20 + Math.random() * (canvas.width - 40);
+      trees.push({
+        x,
+        y: -size,
+        size,
+        passed: false
+      });
+    }
+
+    function update(delta) {
+      if (gameOver) return;
+
+      // Horizontal movement
+      if (keys.ArrowLeft) {
+        skier.speedX -= 0.2;
+      } else if (keys.ArrowRight) {
+        skier.speedX += 0.2;
+      } else {
+        skier.speedX *= 0.9; // friction
+      }
+
+      // Vertical speed control
+      if (keys.ArrowUp) {
+        skier.speedY += 0.1;
+      }
+      if (keys.ArrowDown) {
+        skier.speedY -= 0.1;
+      }
+
+      skier.speedX = Math.max(-skier.maxSpeedX, Math.min(skier.maxSpeedX, skier.speedX));
+      skier.speedY = Math.max(1, Math.min(skier.maxSpeedY, skier.speedY));
+
+      skier.x += skier.speedX;
+      skier.y = canvas.height - 120; // fixed near bottom
+
+      // Keep skier on screen
+      if (skier.x < skier.width / 2) skier.x = skier.width / 2;
+      if (skier.x > canvas.width - skier.width / 2) skier.x = canvas.width - skier.width / 2;
+
+      // Trees
+      const speedFactor = skier.speedY;
+      for (const tree of trees) {
+        tree.y += speedFactor;
+        if (!tree.passed && tree.y > skier.y) {
+          tree.passed = true;
+          score += 1;
+        }
+      }
+
+      // Remove off-screen trees
+      for (let i = trees.length - 1; i >= 0; i--) {
+        if (trees[i].y - trees[i].size > canvas.height) {
+          trees.splice(i, 1);
+        }
+      }
+
+      // Spawn new trees based on elapsed time and speed
+      lastTreeTime += delta;
+      const spawnInterval = 500 / (skier.speedY / skier.baseSpeedY); // ms
+      if (lastTreeTime > spawnInterval) {
+        spawnTree();
+        lastTreeTime = 0;
+      }
+
+      // Collision detection
+      for (const tree of trees) {
+        const dx = Math.abs(tree.x - skier.x);
+        const dy = Math.abs(tree.y - (skier.y + skier.height / 2));
+        const combinedHalfWidth = tree.size / 2 + skier.width / 2;
+        const combinedHalfHeight = tree.size / 2 + skier.height / 2;
+        if (dx < combinedHalfWidth && dy < combinedHalfHeight) {
+          gameOver = true;
+          break;
+        }
+      }
+    }
+
+    function drawSkier() {
+      ctx.save();
+      ctx.translate(skier.x, skier.y);
+
+      // Body
+      ctx.fillStyle = "#ff0000";
+      ctx.fillRect(-skier.width / 2, 0, skier.width, skier.height);
+
+      // Head
+      ctx.beginPath();
+      ctx.arc(0, -10, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffe0bd";
+      ctx.fill();
+
+      // Skis
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-skier.width, skier.height + 5);
+      ctx.lineTo(-skier.width / 2, -5);
+      ctx.moveTo(skier.width, skier.height + 5);
+      ctx.lineTo(skier.width / 2, -5);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawTree(tree) {
+      // Trunk
+      ctx.fillStyle = "#8b4513";
+      ctx.fillRect(tree.x - tree.size / 6, tree.y, tree.size / 3, tree.size);
+
+      // Leaves (simple triangle)
+      ctx.fillStyle = "#006400";
+      ctx.beginPath();
+      ctx.moveTo(tree.x, tree.y - tree.size);
+      ctx.lineTo(tree.x - tree.size / 1.5, tree.y + tree.size / 3);
+      ctx.lineTo(tree.x + tree.size / 1.5, tree.y + tree.size / 3);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawBackground() {
+      // Snow
+      ctx.fillStyle = "#e0f7ff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Center line to suggest slope
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 20]);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawHUD() {
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(0, 0, canvas.width, 30);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "16px sans-serif";
+      ctx.fillText("Score: " + score, 10, 20);
+      ctx.fillText("Speed: " + skier.speedY.toFixed(1), 280, 20);
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "32px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+      ctx.font = "20px sans-serif";
+      ctx.fillText("Score: " + score, canvas.width / 2, canvas.height / 2 + 10);
+      ctx.fillText("Refresh to play again", canvas.width / 2, canvas.height / 2 + 40);
+      ctx.textAlign = "left";
+    }
+
+    let lastTime = performance.now();
+
+    function loop(timestamp) {
+      const delta = timestamp - lastTime;
+      lastTime = timestamp;
+
+      update(delta);
+      drawBackground();
+      trees.forEach(drawTree);
+      drawSkier();
+      drawHUD();
+      if (gameOver) {
+        drawGameOver();
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    // Start with a few trees
+    for (let i = 0; i < 5; i++) {
+      spawnTree();
+      trees[trees.length - 1].y = Math.random() * canvas.height;
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
